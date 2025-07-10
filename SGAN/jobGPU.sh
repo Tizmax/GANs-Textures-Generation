@@ -12,5 +12,5 @@
 
 HEAD="srun singularity exec /apps/containerCollections/CUDA12/pytorch2-NGC-24-02.sif $HOME/GANs-Textures-Generation/SGAN/env_SGAN/bin/python"
 cd $HOME/GANs-Textures-Generation/SGAN/
-$HEAD jobGPU.py --texturePath "../Textures/Original/gravel.jpg"
+$HEAD job.py --textureName "gravel.jpg"
 
