@@ -29,6 +29,24 @@ class Generator(nn.Module):
             nn.ConvTranspose2d(ngf[3], nc, 5, stride=2, padding=2, output_padding=1),
             nn.Tanh()
         )
+        # --- Version généralisée équivalente ---
+        layers = []
+        in_channels = nz 
+
+        # Main Blocs (ConvT -> BatchNorm -> ReLU)
+        for out_channels in ngf:
+            layers.extend([
+                nn.ConvTranspose2d(in_channels, out_channels, 5, stride=2, padding=2, output_padding=1),
+                nn.BatchNorm2d(out_channels),
+                nn.ReLU(True)
+            ])
+            in_channels = out_channels 
+
+        # last bloc (ConvT -> Tanh)
+        layers.append(nn.ConvTranspose2d(in_channels, nc, 5, stride=2, padding=2, output_padding=1))
+        layers.append(nn.Tanh())
+
+        self.net2 = nn.Sequential(*layers)
 
     def forward(self, z):
         return self.net(z)
