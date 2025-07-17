@@ -6,12 +6,15 @@ from PIL import Image
 import matplotlib.pyplot as plt
 from SGAN import Generator, Discriminator
 import argparse
+import hashlib
+import json
+import os
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--textureName', required=True, help='path to texture image folder')
 parser.add_argument('--originalPath', type=str, default="../Textures/Original/", help='path to texture image folder')
-parser.add_argument('--generatedPath', type=str, default="../Textures/Generated/SGAN", help='path to texture image folder')
+parser.add_argument('--generatedPath', type=str, default="../Textures/Generated/SGAN/", help='path to texture image folder')
 parser.add_argument('--latentCanal', type=int, default=50, help='number of canal for the latent')
 parser.add_argument('--latentSize', type=int, default=4, help='height/width of the latent')
 parser.add_argument('--patchSize', type=int, default=128, help='height/width of a patch')
@@ -21,12 +24,26 @@ parser.add_argument('--epoch', type=int, default=5001, help='number of epochs')
 
 opt = parser.parse_args()
 
+# Hash des parametres
+params_dict = vars(opt)
+params_json = json.dumps(params_dict, sort_keys=True)
+params_hash = hashlib.sha256(params_json.encode('utf-8')).hexdigest()[:12] 
+
 LATENT_C = opt.latentCanal
 Z_H, Z_W = opt.latentSize, opt.latentSize
 PATCH_SIZE = opt.patchSize
 BATCH_SIZE = opt.batchSize
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 IMG_NAME = opt.textureName.split(".")[0]
+
+
+OUTPUT_DIR = f"{opt.generatedPath}{IMG_NAME}/{params_hash}"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Save parameters
+with open(os.path.join(OUTPUT_DIR, 'params.json'), 'w') as f:
+    json.dump(params_dict, f, indent=4, sort_keys=True)
+
 
 # ======== UTILS ========
 def sample_z(batch_size):
@@ -98,7 +115,6 @@ for epoch in range(opt.epoch):
 
     # === Visualisation ===
     if epoch % 500 == 0:
-        print(f"[{epoch}] Loss D: {loss_D.item():.4f}, Loss G: {loss_G.item():.4f}")
         with torch.no_grad():
             test_z = sample_z(1)
             gen = G(test_z).squeeze().permute(1, 2, 0).cpu().numpy()
@@ -106,7 +122,10 @@ for epoch in range(opt.epoch):
             plt.figure()
             plt.imshow(gen)
             plt.axis("off")
-            plt.savefig(f'../Textures/Generated/SGAN/{IMG_NAME}E{epoch}{DEVICE.type}.png')
+            plt.savefig(f'{OUTPUT_DIR}/E{epoch}.png')
+
+torch.save(G.state_dict(), f"{OUTPUT_DIR}/net_G.pth")
+torch.save(D.state_dict(), f"{OUTPUT_DIR}/net_D.pth")
 
 plt.figure()
 test_z = torch.randn(1, LATENT_C, opt.sampleLatentSize, opt.sampleLatentSize, device=DEVICE)
@@ -114,18 +133,18 @@ gen = G(test_z).squeeze().permute(1, 2, 0).cpu().detach().numpy()
 gen = (gen + 1) / 2  # [-1,1] → [0,1]
 plt.imshow(gen)
 plt.axis("off")
-plt.savefig(f'../Textures/Generated/SGAN/{IMG_NAME}Sample{DEVICE.type}.png')
+plt.savefig(f'{OUTPUT_DIR}/Sample.png')
 
 plt.figure()
 plt.plot(dis_losses,label='Discriminator losses')
 plt.plot(gen_losses,label='Generator losses')
 plt.legend()
 plt.xlabel('Epochs')
-plt.savefig(f'../Textures/Generated/SGAN/{IMG_NAME}Losses{DEVICE.type}.png')
+plt.savefig(f'{OUTPUT_DIR}/Losses.png')
 
 plt.figure()
 plt.plot(real_scores,label='real scores')
 plt.plot(fake_scores,label='fake scores')
 plt.legend()
 plt.xlabel('Epochs')
-plt.savefig(f'../Textures/Generated/SGAN/{IMG_NAME}Scores{DEVICE.type}.png')
+plt.savefig(f'{OUTPUT_DIR}/Scores.png')

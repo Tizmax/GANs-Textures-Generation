@@ -1,0 +1,11 @@
+[0] Loss D: 1.3820, Loss G: 1.9327
+[500] Loss D: 0.6882, Loss G: 5.7759
+[1000] Loss D: 0.8174, Loss G: 3.6257
+[1500] Loss D: 0.2995, Loss G: 3.2203
+[2000] Loss D: 0.2875, Loss G: 2.5092
+[2500] Loss D: 0.6028, Loss G: 3.0572
+[3000] Loss D: 0.0647, Loss G: 4.7528
+[3500] Loss D: 0.2160, Loss G: 4.2179
+[4000] Loss D: 0.2242, Loss G: 4.7275
+[4500] Loss D: 2.6657, Loss G: 8.8102
+[5000] Loss D: 0.1841, Loss G: 3.5840

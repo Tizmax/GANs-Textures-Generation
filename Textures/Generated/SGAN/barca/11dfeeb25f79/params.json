@@ -1,0 +1,11 @@
+{
+    "batchSize": 16,
+    "epoch": 20001,
+    "generatedPath": "../Textures/Generated/SGAN/",
+    "latentCanal": 50,
+    "latentSize": 4,
+    "originalPath": "../Textures/Original/",
+    "patchSize": 128,
+    "sampleLatentSize": 16,
+    "textureName": "barca.jpg"
+}
