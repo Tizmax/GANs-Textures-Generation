@@ -21,8 +21,12 @@ parser.add_argument('--patchSize', type=int, default=128, help='height/width of 
 parser.add_argument('--batchSize', type=int, default=16, help='number of patch to extract in a single batch')
 parser.add_argument('--sampleLatentSize', type=int, default=16, help='height/width of the latent in order to generate a sample')
 parser.add_argument('--epoch', type=int, default=5001, help='number of epochs')
+parser.add_argument('--netDepth', type=int, default=5, help='4|5|6 - number of convolutionals layers')
 
 opt = parser.parse_args()
+
+if opt.netDepth not in {4,5,6}:
+    raise Exception("netDepth should be in {4,5,6}") 
 
 # Hash des parametres
 params_dict = vars(opt)
@@ -60,8 +64,12 @@ real_img = Image.open(opt.originalPath + opt.textureName).convert("RGB")
 
 
 # ======== INIT ========
-G = Generator(LATENT_C).to(DEVICE)
-D = Discriminator().to(DEVICE)
+ndf = [64, 128, 256, 512, 1024]
+ndf = ndf[:opt.netDepth-1]
+ngf = ndf[::-1]
+
+G = Generator(LATENT_C, ngf=ngf).to(DEVICE)
+D = Discriminator(ndf=ndf).to(DEVICE)
 opt_G = optim.Adam(G.parameters(), lr=2e-3, betas=(0.5, 0.999))
 opt_D = optim.Adam(D.parameters(), lr=2e-4, betas=(0.5, 0.999))
 
@@ -119,21 +127,20 @@ for epoch in range(opt.epoch):
             test_z = sample_z(1)
             gen = G(test_z).squeeze().permute(1, 2, 0).cpu().numpy()
             gen = (gen + 1) / 2  # [-1,1] → [0,1]
-            plt.figure()
-            plt.imshow(gen)
-            plt.axis("off")
-            plt.savefig(f'{OUTPUT_DIR}/E{epoch}.png')
+            sizes = gen.shape
+            ## plt.figure()
+            ## fig.set_size_inches(1. * sizes[0] / sizes[1], 1, forward = False)
+            plt.imsave(f'{OUTPUT_DIR}/E{epoch}.png', gen)
+            ##plt.axis("off")
+            ##plt.savefig(f'{OUTPUT_DIR}/E{epoch}.png')
 
 torch.save(G.state_dict(), f"{OUTPUT_DIR}/net_G.pth")
 torch.save(D.state_dict(), f"{OUTPUT_DIR}/net_D.pth")
 
-plt.figure()
 test_z = torch.randn(1, LATENT_C, opt.sampleLatentSize, opt.sampleLatentSize, device=DEVICE)
 gen = G(test_z).squeeze().permute(1, 2, 0).cpu().detach().numpy()
 gen = (gen + 1) / 2  # [-1,1] → [0,1]
-plt.imshow(gen)
-plt.axis("off")
-plt.savefig(f'{OUTPUT_DIR}/Sample.png')
+plt.imsave(f'{OUTPUT_DIR}/Sample.png', gen)
 
 plt.figure()
 plt.plot(dis_losses,label='Discriminator losses')
