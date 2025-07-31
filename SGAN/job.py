@@ -22,6 +22,9 @@ parser.add_argument('--batchSize', type=int, default=16, help='number of patch t
 parser.add_argument('--sampleLatentSize', type=int, default=16, help='height/width of the latent in order to generate a sample')
 parser.add_argument('--epoch', type=int, default=5001, help='number of epochs')
 parser.add_argument('--netDepth', type=int, default=5, help='4|5|6 - number of convolutionals layers')
+parser.add_argument('--lrG', type=float, default=1e-3, help='learning rate of the Generator\'s optimizer')
+parser.add_argument('--lrD', type=float, default=1e-4, help='learning rate of the Discriminator\'s optimizer')
+parser.add_argument('--multD', type=int, default=5, help='number of Discriminator\'s training loop for 1 Generator\'s loop')
 
 opt = parser.parse_args()
 
@@ -70,8 +73,8 @@ ngf = ndf[::-1]
 
 G = Generator(LATENT_C, ngf=ngf).to(DEVICE)
 D = Discriminator(ndf=ndf).to(DEVICE)
-opt_G = optim.Adam(G.parameters(), lr=2e-3, betas=(0.5, 0.999))
-opt_D = optim.Adam(D.parameters(), lr=2e-4, betas=(0.5, 0.999))
+opt_G = optim.Adam(G.parameters(), lr=opt.lrG, betas=(0.5, 0.999))
+opt_D = optim.Adam(D.parameters(), lr=opt.lrD, betas=(0.5, 0.999))
 
 # ======== ENTRAÎNEMENT ========
 
@@ -87,23 +90,25 @@ real_scores = []
 fake_scores = []
 
 for epoch in range(opt.epoch):
-    z = sample_z(BATCH_SIZE)
-    fake_img = G(z)
 
-    # === Discriminateur ===
-    real_patch = torch.cat([transform(real_img).unsqueeze(0).to(DEVICE) for _ in range(BATCH_SIZE)],dim=0)
-
-    real_score = D(real_patch)
-    fake_score = D(fake_img.detach())
-
-    loss_D_real = loss(real_score, torch.zeros_like(real_score)+real_label)
-    loss_D_fake = loss(fake_score, torch.zeros_like(fake_score)+fake_label)
-
-    loss_D = loss_D_real + loss_D_fake
+    for i in range(opt.multD):
+        z = sample_z(BATCH_SIZE)
+        fake_img = G(z)
     
-    opt_D.zero_grad()
-    loss_D.backward()
-    opt_D.step()
+        # === Discriminateur ===
+        real_patch = torch.cat([transform(real_img).unsqueeze(0).to(DEVICE) for _ in range(BATCH_SIZE)],dim=0)
+    
+        real_score = D(real_patch)
+        fake_score = D(fake_img.detach())
+    
+        loss_D_real = loss(real_score, torch.zeros_like(real_score)+real_label)
+        loss_D_fake = loss(fake_score, torch.zeros_like(fake_score)+fake_label)
+    
+        loss_D = loss_D_real + loss_D_fake
+        
+        opt_D.zero_grad()
+        loss_D.backward()
+        opt_D.step()
 
     # === Générateur ===
     
@@ -116,8 +121,8 @@ for epoch in range(opt.epoch):
 
     # === Visualisation ===
 
-    dis_losses.append(loss_D.cpu().detach().numpy())
-    gen_losses.append(loss_G.cpu().detach().numpy())
+    dis_losses.append(float(loss_D.cpu().detach().numpy()))
+    gen_losses.append(float(loss_G.cpu().detach().numpy()))
     real_scores.append(torch.mean(real_score).cpu().detach().numpy())
     fake_scores.append(torch.mean(fake_score).cpu().detach().numpy())
 
@@ -127,12 +132,7 @@ for epoch in range(opt.epoch):
             test_z = sample_z(1)
             gen = G(test_z).squeeze().permute(1, 2, 0).cpu().numpy()
             gen = (gen + 1) / 2  # [-1,1] → [0,1]
-            sizes = gen.shape
-            ## plt.figure()
-            ## fig.set_size_inches(1. * sizes[0] / sizes[1], 1, forward = False)
             plt.imsave(f'{OUTPUT_DIR}/E{epoch}.png', gen)
-            ##plt.axis("off")
-            ##plt.savefig(f'{OUTPUT_DIR}/E{epoch}.png')
 
 torch.save(G.state_dict(), f"{OUTPUT_DIR}/net_G.pth")
 torch.save(D.state_dict(), f"{OUTPUT_DIR}/net_D.pth")
@@ -142,6 +142,11 @@ gen = G(test_z).squeeze().permute(1, 2, 0).cpu().detach().numpy()
 gen = (gen + 1) / 2  # [-1,1] → [0,1]
 plt.imsave(f'{OUTPUT_DIR}/Sample.png', gen)
 
+
+# Save losses
+with open(os.path.join(OUTPUT_DIR, 'losses.json'), 'w') as f:
+    json.dump({'dis':dis_losses, 'gen':gen_losses}, f, indent=4)
+    
 plt.figure()
 plt.plot(dis_losses,label='Discriminator losses')
 plt.plot(gen_losses,label='Generator losses')
