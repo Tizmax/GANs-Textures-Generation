@@ -29,12 +29,16 @@ parser.add_argument('--lrD', type=float, default=1e-4, help='learning rate of th
 
 # Training args
 parser.add_argument('--batchSize', type=int, default=16, help='number of patch to extract in a single batch')
-parser.add_argument('--epoch', type=int, default=5001, help='number of epochs')
+parser.add_argument('--epoch', type=int, default=5001, help='number of epochs') 
 parser.add_argument('--multD', type=int, default=5, help='number of Discriminator\'s training loop for 1 Generator\'s loop')
 
 # Job args
 parser.add_argument('--prefix', type=str , default='', help='prefix to add to the job\'s name')
 parser.add_argument('--suffix', type=str , default='', help='suffix to add to the job\'s name')
+
+# Reg args
+parser.add_argument('--weightDecay', type=float , default=1e-3, help='weight decay to add to AdamW regularizer')
+parser.add_argument('--plotRegLosses', type=bool , default=False, help='Plot the impact of the regularization term on the loss')
 
 opt = parser.parse_args()
 
@@ -88,7 +92,7 @@ ngf = ndf[::-1]
 
 G = Generator(LATENT_C, ngf=ngf).to(DEVICE)
 D = Discriminator(ndf=ndf).to(DEVICE)
-opt_G = optim.Adam(G.parameters(), lr=opt.lrG, betas=(0.5, 0.999))
+opt_G = optim.AdamW(G.parameters(), lr=opt.lrG, betas=(0.5, 0.999), weight_decay=opt.weightDecay)
 opt_D = optim.Adam(D.parameters(), lr=opt.lrD, betas=(0.5, 0.999))
 
 # ======== ENTRAÎNEMENT ========
@@ -103,6 +107,8 @@ dis_losses = []
 gen_losses = []
 real_scores = []
 fake_scores = []
+reg_losses_G = []
+reg_losses_D = []
 
 for epoch in range(opt.epoch):
 
@@ -115,7 +121,7 @@ for epoch in range(opt.epoch):
     
         real_score = D(real_patch)
         fake_score = D(fake_img.detach())
-    
+        
         loss_D_real = loss(real_score, torch.zeros_like(real_score)+real_label)
         loss_D_fake = loss(fake_score, torch.zeros_like(fake_score)+fake_label)
     
@@ -152,14 +158,26 @@ for epoch in range(opt.epoch):
         loss_D_plot = loss_D_real_plot + loss_D_fake_plot
         dis_losses.append(loss_D_plot.item())
         
-        score = D(fake_img)
-        loss_G = loss(score, torch.zeros_like(score)+real_label)
-        
+        #score = D(fake_img)
+        loss_G = loss(fake_score_plot, torch.zeros_like(fake_score_plot)+real_label)
+
+        if opt.plotRegLosses:
+            reg_loss_G = 0
+            reg_loss_D = 0
+            for param in G.parameters():
+                norm2 = param.view(-1).norm()**2
+                reg_loss_G += norm2.item()
+            for param in D.parameters():
+                norm2 = param.view(-1).norm()**2
+                reg_loss_D += norm2.item()
+            reg_losses_G.append(reg_loss_G)
+            reg_losses_D.append(reg_loss_D)
+            
         if epoch % 500 == 0:
-                test_z = sample_z(1)
-                gen = G(test_z).squeeze().permute(1, 2, 0).cpu().numpy()
-                gen = (gen + 1) / 2  # [-1,1] → [0,1]
-                plt.imsave(f'{OUTPUT_DIR}/E{epoch}.png', gen, vmin=0, vmax=1)
+            test_z = sample_z(1)
+            gen = G(test_z).squeeze().permute(1, 2, 0).cpu().numpy()
+            gen = (gen + 1) / 2  # [-1,1] → [0,1]
+            plt.imsave(f'{OUTPUT_DIR}/E{epoch}.png', gen, vmin=0, vmax=1)
 
 torch.save(G.state_dict(), f"{OUTPUT_DIR}/net_G.pth")
 torch.save(D.state_dict(), f"{OUTPUT_DIR}/net_D.pth")
@@ -175,15 +193,29 @@ with open(os.path.join(OUTPUT_DIR, 'losses.json'), 'w') as f:
     json.dump({'dis':dis_losses, 'gen':gen_losses}, f, indent=4)
     
 plt.figure()
-plt.plot(dis_losses,label=r'$\mathcal{L}_D(\theta_G^{t}, \theta_D^{t+1})$')
-plt.plot(gen_losses,label=r'$\mathcal{L}_G(\theta_G^{t}, \theta_D^{t+1})$')
+list_epoch = range(1,opt.epoch+1)
+plt.plot(list_epoch, dis_losses,label=r'$\mathcal{L}_D(\phi^{t}, \theta^{t})$')
+plt.plot(list_epoch, gen_losses,label=r'$\mathcal{L}_G(\phi^{t}, \theta^{t})$')
 plt.legend()
 plt.xlabel('Epochs')
-plt.savefig(f'{OUTPUT_DIR}/Losses.png')
+plt.savefig(f'{OUTPUT_DIR}/Losses.png')    
+
+if opt.plotRegLosses:
+    plt.figure()
+    plt.plot(list_epoch, reg_losses_G,label=r'$\|\phi\|^2$')
+    plt.legend()
+    plt.xlabel('Epochs')
+    plt.savefig(f'{OUTPUT_DIR}/regLossesG.png')
+    
+    plt.figure()
+    plt.plot(list_epoch, reg_losses_D,label=r'$\|\theta\|^2$')
+    plt.legend()
+    plt.xlabel('Epochs')
+    plt.savefig(f'{OUTPUT_DIR}/regLossesD.png')
 
 plt.figure()
-plt.plot(real_scores,label='real scores')
-plt.plot(fake_scores,label='fake scores')
+plt.plot(list_epoch, real_scores,label='real scores')
+plt.plot(list_epoch, fake_scores,label='fake scores')
 plt.legend()
 plt.xlabel('Epochs')
 plt.savefig(f'{OUTPUT_DIR}/Scores.png')
